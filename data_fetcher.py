@@ -4,26 +4,26 @@ import yfinance as yf
 
 
 def download_data(ticker, start_date, end_date):
-    """Ham hisse verisini yfinance ile indirir."""
+    """Download data from Yahoo Finance."""
     return yf.download(ticker, start=start_date, end=end_date, progress=False)
 
 
 def _to_float(value):
-    """Close değerini Series veya skaler olsun, güvenli şekilde float'a çevirir."""
+    """Convert close value to float."""
     if hasattr(value, "iloc"):
         return float(value.iloc[0])
     return float(value)
 
 
 def _to_date_string(date):
-    """Pandas Timestamp veya benzeri tarih nesnesini YYYY-MM-DD string'e çevirir."""
+    """Convert date to YYYY-MM-DD string."""
     if hasattr(date, "strftime"):
         return date.strftime("%Y-%m-%d")
     return str(date)[:10]
 
 
 def parse_data(data):
-    """Pandas DataFrame'i saf Python sözlükler listesine dönüştürür."""
+    """Convert pandas DataFrame to list of dictionaries."""
     if data is None or data.empty:
         return []
 
@@ -40,7 +40,7 @@ def parse_data(data):
 
 
 def fetch_data(ticker, start_date, end_date):
-    """Veriyi indirir, parse eder ve temiz listeyi döndürür."""
+    """Download data, parse it and return clean list."""
     raw_data = download_data(ticker, start_date, end_date)
     return parse_data(raw_data)
 

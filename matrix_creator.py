@@ -2,20 +2,20 @@ import json
 
 
 # ---------------------------------------------------------------------------
-# Yardımcı fonksiyonlar
+# Helper functions
 # ---------------------------------------------------------------------------
 
 def _sma(values):
-    """Verilen sayı listesinin basit aritmetik ortalamasını döndürür."""
+    """Calculate simple arithmetic mean of given list of numbers."""
     return sum(values) / len(values)
 
 
 def _ema_series(values, period):
     """
-    EMA serisi hesaplar.
-    İlk EMA değeri, ilk `period` günün SMA'sı ile başlatılır.
+    Calculate EMA series.
+    The first EMA value is initialized with the SMA of the first `period` days.
     Multiplier = 2 / (period + 1)
-    Hesaplanamayan günler None kalır.
+    Days that cannot be calculated are None.
     """
     n = len(values)
     ema_values = [None] * n
@@ -34,13 +34,13 @@ def _ema_series(values, period):
 
 
 # ---------------------------------------------------------------------------
-# Özellik ekleme fonksiyonları
+# Add feature functions
 # ---------------------------------------------------------------------------
 
 def add_price_direction(data):
     """
-    Bir önceki günün kapanışına göre yön bilgisi ekler.
-    Artış → 1, Düşüş → -1, Aynı → 0. İlk gün → None.
+    Add direction information based on the previous day's close.
+    Increase → 1, Decrease → -1, Same → 0. First day → None.
     """
     for i, row in enumerate(data):
         if i == 0:
@@ -62,64 +62,78 @@ def add_price_direction(data):
 
 def add_sma_and_crossovers(data):
     """
-    20, 50, 100 ve 200 günlük SMA hesaplar, ardından kesişim sinyalleri ekler.
-    Cross_X_Y: SMA_X > SMA_Y ise 1, aksi halde 0.
-    Yeterli veri olmayan günler None kalır.
+    Calculate 20, 50, 100 and 200 day SMA, then compute normalized SMA ratios and crossover signals.
+    
+    Normalized SMA ratio formula: SMA_X_Ratio = (Close - SMA_X) / SMA_X
+    This represents percentage distance from the Close price, eliminating look-ahead bias.
+    
+    Cross_X_Y: SMA_X_Ratio > SMA_Y_Ratio is 1, otherwise 0.
+    Days with insufficient data are None.
     """
     for i, row in enumerate(data):
-        # SMA_20: son 20 kapanış (bugün dahil)
+        close_price = row["Close"]
+        
+        # SMA_20: last 20 close (including today)
         if i < 19:
-            row["SMA_20"] = None
+            row["SMA_20_Ratio"] = None
+            sma_20 = None
         else:
             window = [data[j]["Close"] for j in range(i - 19, i + 1)]
-            row["SMA_20"] = _sma(window)
+            sma_20 = _sma(window)
+            row["SMA_20_Ratio"] = (close_price - sma_20) / sma_20
 
-        # SMA_50: son 50 kapanış (bugün dahil)
+        # SMA_50: last 50 close (including today)
         if i < 49:
-            row["SMA_50"] = None
+            row["SMA_50_Ratio"] = None
+            sma_50 = None
         else:
             window = [data[j]["Close"] for j in range(i - 49, i + 1)]
-            row["SMA_50"] = _sma(window)
+            sma_50 = _sma(window)
+            row["SMA_50_Ratio"] = (close_price - sma_50) / sma_50
 
-        # SMA_100: son 100 kapanış (bugün dahil)
+        # SMA_100: last 100 close (including today)
         if i < 99:
-            row["SMA_100"] = None
+            row["SMA_100_Ratio"] = None
+            sma_100 = None
         else:
             window = [data[j]["Close"] for j in range(i - 99, i + 1)]
-            row["SMA_100"] = _sma(window)
+            sma_100 = _sma(window)
+            row["SMA_100_Ratio"] = (close_price - sma_100) / sma_100
 
-        # SMA_200: son 200 kapanış (bugün dahil)
+        # SMA_200: last 200 close (including today)
         if i < 199:
-            row["SMA_200"] = None
+            row["SMA_200_Ratio"] = None
+            sma_200 = None
         else:
             window = [data[j]["Close"] for j in range(i - 199, i + 1)]
-            row["SMA_200"] = _sma(window)
+            sma_200 = _sma(window)
+            row["SMA_200_Ratio"] = (close_price - sma_200) / sma_200
 
-        # Kısa / orta / uzun vadeli crossover sinyalleri
-        if row["SMA_20"] is None or row["SMA_50"] is None:
+        # Short / medium / long term crossover signals (based on ratios)
+        if row["SMA_20_Ratio"] is None or row["SMA_50_Ratio"] is None:
             row["Cross_20_50"] = None
         else:
-            row["Cross_20_50"] = 1 if row["SMA_20"] > row["SMA_50"] else 0
+            row["Cross_20_50"] = 1 if row["SMA_20_Ratio"] > row["SMA_50_Ratio"] else 0
 
-        if row["SMA_50"] is None or row["SMA_100"] is None:
+        if row["SMA_50_Ratio"] is None or row["SMA_100_Ratio"] is None:
             row["Cross_50_100"] = None
         else:
-            row["Cross_50_100"] = 1 if row["SMA_50"] > row["SMA_100"] else 0
+            row["Cross_50_100"] = 1 if row["SMA_50_Ratio"] > row["SMA_100_Ratio"] else 0
 
-        if row["SMA_100"] is None or row["SMA_200"] is None:
+        if row["SMA_100_Ratio"] is None or row["SMA_200_Ratio"] is None:
             row["Cross_100_200"] = None
         else:
-            row["Cross_100_200"] = 1 if row["SMA_100"] > row["SMA_200"] else 0
+            row["Cross_100_200"] = 1 if row["SMA_100_Ratio"] > row["SMA_200_Ratio"] else 0
 
     return data
 
 
 def add_macd(data):
     """
-    MACD indikatörünü hesaplar.
-    - EMA_12 ve EMA_26: kapanış fiyatları üzerinden (SMA ile başlatılır)
+    Calculate MACD indicator.
+    - EMA_12 and EMA_26: based on close prices (initialized with SMA)
     - MACD_Line: EMA_12 - EMA_26
-    - MACD_Signal: MACD_Line üzerinden 9 günlük EMA (SMA ile başlatılır)
+    - MACD_Signal: 9 day EMA based on MACD_Line (initialized with SMA)
     """
     closes = [row["Close"] for row in data]
     ema_12 = _ema_series(closes, 12)
@@ -133,9 +147,9 @@ def add_macd(data):
         data[i]["EMA_26"] = ema_26[i]
         data[i]["MACD_Line"] = macd_line[i]
 
-    # MACD_Signal: MACD_Line'ın 9 günlük EMA'sı
+    # MACD_Signal: 9 day EMA based on MACD_Line
     signal_period = 9
-    first_macd_idx = 25  # EMA_26'nın ilk geçerli olduğu indeks
+    first_macd_idx = 25  # Index of the first valid EMA_26
 
     for i in range(len(data)):
         data[i]["MACD_Signal"] = None
@@ -156,9 +170,9 @@ def add_macd(data):
 
 def add_rsi(data, period=14):
     """
-    Göreceli Güç Endeksi (RSI) hesaplar.
-    - İlk `period` günün kazanç/kayıpları basit ortalama ile başlatılır
-    - Sonraki günlerde Wilder yumuşatılmış hareketli ortalama kullanılır
+    Calculate Relative Strength Index (RSI).
+    - The first `period` days's gains/losses are initialized with simple average
+    - Then Wilder smoothed moving average is used for subsequent days
     """
     n = len(data)
 
@@ -169,7 +183,7 @@ def add_rsi(data, period=14):
         data[i]["Avg_Loss"] = None
         data[i]["RSI"] = None
 
-    # Günlük kazanç ve kayıp (ilk gün hesaplanamaz)
+    # Daily gain and loss (first day cannot be calculated)
     for i in range(1, n):
         change = data[i]["Close"] - data[i - 1]["Close"]
         data[i]["Gain"] = change if change > 0 else 0.0
@@ -178,7 +192,7 @@ def add_rsi(data, period=14):
     if n <= period:
         return data
 
-    # İlk ortalama kazanç/kayıp: 1. günden period. güne kadar basit ortalama
+    # First average gain/loss: simple average from 1st day to period day
     initial_gains = [data[i]["Gain"] for i in range(1, period + 1)]
     initial_losses = [data[i]["Loss"] for i in range(1, period + 1)]
     avg_gain = _sma(initial_gains)
@@ -193,7 +207,7 @@ def add_rsi(data, period=14):
         rs = avg_gain / avg_loss
         data[period]["RSI"] = 100 - (100 / (1 + rs))
 
-    # Sonraki günler: yumuşatılmış hareketli ortalama (Wilder's smoothing)
+    # Subsequent days: smoothed moving average (Wilder's smoothing)
     for i in range(period + 1, n):
         avg_gain = (avg_gain * (period - 1) + data[i]["Gain"]) / period
         avg_loss = (avg_loss * (period - 1) + data[i]["Loss"]) / period
@@ -212,8 +226,8 @@ def add_rsi(data, period=14):
 
 def add_target_variable(data, days_ahead=3):
     """
-    Model hedef değişkeni (y): days_ahead gün sonraki kapanış bugünden
-    yüksekse 1, değilse 0. Son `days_ahead` güne None atanır.
+    Model target variable (y): until `days_ahead` any day's close is higher than today's close,
+    then 1, otherwise 0. Last `days_ahead` day is None.
     """
     n = len(data)
 
@@ -221,16 +235,81 @@ def add_target_variable(data, days_ahead=3):
         if i + days_ahead >= n:
             data[i]["Target"] = None
         else:
-            future_close = data[i + days_ahead]["Close"]
-            data[i]["Target"] = 1 if future_close > data[i]["Close"] else 0
+            for j in range(days_ahead):
+                if data[i + j]["Close"] > data[i]["Close"]:
+                    data[i]["Target"] = 1
+                    data[i]["Which_Day_Is_Higher"] = j + 1
+                    break
+            
+            if data[i].get("Target") is None:
+                data[i]["Target"] = 0
+
+    return data
+
+def add_90_day_target_variable(data):
+    """
+    Model target variable (y): 85-95 day's close is higher than today's close,
+    then 1, otherwise 0. Last 95 day is None.
+    """
+
+    n = len(data)
+
+    for i in range(n):
+        if i + 95 >= n:
+            data[i]["Target_90"] = None
+        else:
+            future_close = sum(data[j]["Close"] for j in range(i + 85, i + 95)) / 10
+            data[i]["Target_90"] = 1 if future_close > data[i]["Close"] else 0
+
+    return data
+
+def add_180_day_target_variable(data):
+    """
+    Model target variable (y): 170-190 day's close is higher than today's close,
+    then 1, otherwise 0. Last 190 day is None.
+    """
+
+    n = len(data)
+
+    for i in range(n):
+        if i + 190 >= n:
+            data[i]["Target_180"] = None
+        else:
+            future_close = sum(data[j]["Close"] for j in range(i + 170, i + 190)) / 20
+            data[i]["Target_180"] = 1 if future_close > data[i]["Close"] else 0
+
+    return data
+
+def add_365_day_target_variable(data):
+    """
+    Model target variable (y): 350-380 day's close is higher than today's close,
+    then 1, otherwise 0. Last 380 day is None.
+    """
+
+    n = len(data)
+
+    for i in range(n):
+        if i + 380 >= n:
+            data[i]["Target_365"] = None
+        else:
+            future_close = sum(data[j]["Close"] for j in range(i + 350, i + 380)) / 30
+            data[i]["Target_365"] = 1 if future_close > data[i]["Close"] else 0
+
+    return data
+
+def add_all_target_variables(data):
+    add_target_variable(data, days_ahead=3)
+    add_90_day_target_variable(data)
+    add_180_day_target_variable(data)
+    add_365_day_target_variable(data)
 
     return data
 
 
 def clean_matrix(data):
     """
-    None içeren satırları siler ve ara hesaplama anahtarlarını temizler.
-    Geriye sadece model için gerekli özellikler kalır.
+    Remove rows with None and clean intermediate calculation keys.
+    Return only the features required for the model.
     """
     intermediate_keys = ["Gain", "Loss", "Avg_Gain", "Avg_Loss", "EMA_12", "EMA_26"]
 
@@ -243,19 +322,19 @@ def clean_matrix(data):
     return data
 
 
-def build_feature_matrix(raw_data):
+def build_feature_matrix(raw_data, file_path="final_matrix.json"):
     """
-    Tüm özellik mühendisliği adımlarını sırayla çalıştırır,
-    temizlenmiş matrisi final_matrix.json olarak kaydeder.
+    Run all feature engineering steps sequentially,
+    save the cleaned matrix to `file_path`.json and return the final matrix as a list of dictionaries.
     """
     add_price_direction(raw_data)
     add_sma_and_crossovers(raw_data)
     add_macd(raw_data)
     add_rsi(raw_data)
-    add_target_variable(raw_data)
+    add_all_target_variables(raw_data)
     clean_matrix(raw_data)
 
-    with open("final_matrix.json", "w", encoding="utf-8") as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         json.dump(raw_data, f, indent=2)
 
     return raw_data
@@ -265,7 +344,7 @@ if __name__ == "__main__":
     with open("aapl_data.json", encoding="utf-8") as f:
         raw_data = json.load(f)
 
-    matrix = build_feature_matrix(raw_data)
+    matrix = build_feature_matrix(raw_data, file_path="final_matrix.json")
     print(f"Feature matrix ready: {len(matrix)} rows saved to final_matrix.json")
 
     if matrix:
