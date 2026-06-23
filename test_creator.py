@@ -3,6 +3,10 @@ import json
 TRAIN_SIZE = 0.8
 
 def create_test_data(matrix, day = "Target"):
+    """
+    Split the matrix into training and test datasets while extracting features and targets.
+    Uses 80% of data for training and 20% for testing. Returns feature and target arrays for both sets.
+    """
     X_train = []
     X_test = []
     y_train = []
@@ -13,9 +17,12 @@ def create_test_data(matrix, day = "Target"):
     train_data = matrix[:split_index]
     test_data = matrix[split_index:]
 
-    features_to_keep = ["Direction", "SMA_20", "SMA_50", "SMA_100", "SMA_200", "Cross_20_50", "Cross_50_100", "Cross_100_200", "MACD_Line", "MACD_Signal", "RSI"]
-
+    features_to_keep = ["Direction", "SMA_20_Ratio", "SMA_50_Ratio", "SMA_100_Ratio", "SMA_200_Ratio", "Cross_20_50", "Cross_50_100", "Cross_100_200", "MACD_Line", "MACD_Signal", "RSI"]
     def extract_features(data):
+        """
+        Extract feature vectors and target values from data rows.
+        Returns two lists: X (feature vectors) and y (target values).
+        """
         X = []
         y = []
 

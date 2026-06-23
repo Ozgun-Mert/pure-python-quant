@@ -298,6 +298,10 @@ def add_365_day_target_variable(data):
     return data
 
 def add_all_target_variables(data):
+    """
+    Apply all target variable functions to the data including 3-day, 90-day, 180-day, and 365-day targets.
+    Returns the data with all target variables added.
+    """
     add_target_variable(data, days_ahead=3)
     add_90_day_target_variable(data)
     add_180_day_target_variable(data)
