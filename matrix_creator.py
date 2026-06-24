@@ -223,6 +223,127 @@ def add_rsi(data, period=14):
 
     return data
 
+def add_target_day_percentage_change(data, days_ahead=3):
+    """
+    Calculate percentage price change based on average of next N days' closing prices.
+    
+    This function computes how much the price (on average) will change over the next N days,
+    expressed as a percentage relative to today's closing price. This metric is useful for
+    understanding average price movement magnitude in the short term.
+    
+    Formula: (Average_Future_Close - Today_Close) / Today_Close
+    Where Average_Future_Close = average of the next `days_ahead` closing prices
+    
+    Parameters:
+    - data: List of dictionaries containing daily OHLC data with 'Close' field
+    - days_ahead: Number of days to look ahead for averaging (default: 3)
+    
+    Returns:
+    - data with "Target_Day_Percentage_Change" field added
+    - Field value is None if there are not enough future days available
+    """
+    n = len(data)
+    for i in range(n):
+        if i + days_ahead >=n:
+            data[i]["Target_Day_Percentage_Change"] = None
+        else:
+            total = 0
+            for j in range(days_ahead):
+                total += data[i+j]["Close"]
+            average_price = total/days_ahead
+            average_change = (average_price-data[i]["Close"])/data[i]["Close"]
+            data[i]["Target_Day_Percentage_Change"] = average_change
+
+def add_target_90day_percentage_change(data):
+    """
+    Calculate percentage price change based on average closing price around 90 days in the future.
+    
+    This function measures the expected price movement approximately 3 months ahead by averaging
+    the closing prices from days 85-95 (a 10-day window centered roughly at the 90-day mark).
+    This provides a medium-term outlook for price changes and helps identify long-term trends.
+    
+    Formula: (Average_Close_Days_85_95 - Today_Close) / Today_Close
+    Where Average_Close_Days_85_95 = average of closing prices from day i+85 to i+94
+    
+    Parameters:
+    - data: List of dictionaries containing daily OHLC data with 'Close' field
+    
+    Returns:
+    - data with "Target_90Day_Percentage_Change" field added
+    - Field value is None if there are not enough future days available (requires at least 95 days ahead)
+    """
+    n = len(data)
+    for i in range(n):
+        if i + 95 >=n:
+            data[i]["Target_90Day_Percentage_Change"] = None
+        else:
+            total = 0
+            for j in range(85,95):
+                total += data[i+j]["Close"]
+            average_price = total/10
+            average_change = (average_price-data[i]["Close"])/data[i]["Close"]
+            data[i]["Target_90Day_Percentage_Change"] = average_change
+
+def add_target_180day_percentage_change(data):
+    """
+    Calculate percentage price change based on average closing price around 180 days in the future.
+    
+    This function measures the expected price movement approximately 6 months ahead by averaging
+    the closing prices from days 170-190 (a 20-day window centered roughly at the 180-day mark).
+    This provides a long-term outlook for price changes over a 6-month horizon.
+    
+    Formula: (Average_Close_Days_170_190 - Today_Close) / Today_Close
+    Where Average_Close_Days_170_190 = average of closing prices from day i+170 to i+189
+    
+    Parameters:
+    - data: List of dictionaries containing daily OHLC data with 'Close' field
+    
+    Returns:
+    - data with "Target_180Day_Percentage_Change" field added
+    - Field value is None if there are not enough future days available (requires at least 190 days ahead)
+    """
+    n = len(data)
+    for i in range(n):
+        if i + 190 >=n:
+            data[i]["Target_180Day_Percentage_Change"] = None
+        else:
+            total = 0
+            for j in range(170,190):
+                total += data[i+j]["Close"]
+            average_price = total/20
+            average_change = (average_price-data[i]["Close"])/data[i]["Close"]
+            data[i]["Target_180Day_Percentage_Change"] = average_change
+
+def add_target_365day_percentage_change(data):
+    """
+    Calculate percentage price change based on average closing price around 365 days in the future.
+    
+    This function measures the expected price movement approximately 1 year ahead by averaging
+    the closing prices from days 350-380 (a 30-day window centered roughly at the 365-day mark).
+    This provides a long-term outlook for annual price changes and helps identify yearly trends.
+    
+    Formula: (Average_Close_Days_350_380 - Today_Close) / Today_Close
+    Where Average_Close_Days_350_380 = average of closing prices from day i+350 to i+379
+    
+    Parameters:
+    - data: List of dictionaries containing daily OHLC data with 'Close' field
+    
+    Returns:
+    - data with "Target_365Day_Percentage_Change" field added
+    - Field value is None if there are not enough future days available (requires at least 380 days ahead)
+    """
+    n = len(data)
+    for i in range(n):
+        if i + 380 >=n:
+            data[i]["Target_365Day_Percentage_Change"] = None
+        else:
+            total = 0
+            for j in range(350,380):
+                total += data[i+j]["Close"]
+            average_price = total/30
+            average_change = (average_price-data[i]["Close"])/data[i]["Close"]
+            data[i]["Target_365Day_Percentage_Change"] = average_change
+
 
 def add_target_variable(data, days_ahead=3):
     """
@@ -306,6 +427,11 @@ def add_all_target_variables(data):
     add_90_day_target_variable(data)
     add_180_day_target_variable(data)
     add_365_day_target_variable(data)
+
+    add_target_day_percentage_change(data, days_ahead=3)
+    add_target_90day_percentage_change(data)
+    add_target_180day_percentage_change(data)
+    add_target_365day_percentage_change(data)
 
     return data
 
