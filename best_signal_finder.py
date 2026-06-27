@@ -25,6 +25,35 @@ def filter_signals(signals: List[Value], signal_type: Type, min_win_rate: float,
 
     return sorted_signals[:top_n]
 
+def find_champion(signals: List[Value], signal_type: Type) -> Value:
+    if not signals:
+        return None
+    
+    if len(signals) == 1:
+        return signals[0]
+    
+    if signal_type == Type.HIGH:
+        champion = max(
+            signals, key= lambda v: (
+                v.win_rate,
+                v.support,
+                v.percentage_profit,
+                -len(v.rules)
+            )
+        )
+    else:
+        champion = max(
+            signals, key= lambda v: (
+                v.win_rate,
+                v.support,
+                -v.percentage_profit,
+                len(v.rules)
+            )
+        )
+
+    return champion
+
+
 def best_for_target(target_list):
     best_highs = filter_signals(
         signals=target_list, 
@@ -158,6 +187,26 @@ def finder(ticker: str):
     best_90_target = best_for_90_target(target_90_list=target_90_list)
     best_180_target = best_for_180_target(target_180_list=target_180_list)
     best_365_target = best_for_365_target(target_365_list=target_365_list)
+
+    champion_target_high = find_champion(signals=best_target["high"], signal_type=Type.HIGH)
+    champion_target_low = find_champion(signals=best_target["low"], signal_type=Type.LOW)
+    champion_90_target_high = find_champion(signals=best_90_target["high"], signal_type=Type.HIGH)
+    champion_90_target_low = find_champion(signals=best_90_target["low"], signal_type=Type.LOW)
+    champion_180_target_high = find_champion(signals=best_180_target["high"], signal_type=Type.HIGH)
+    champion_180_target_low = find_champion(signals=best_180_target["low"], signal_type=Type.LOW)
+    champion_365_target_high = find_champion(signals=best_365_target["high"], signal_type=Type.HIGH)
+    champion_365_target_low = find_champion(signals=best_365_target["low"], signal_type=Type.LOW)
+
+    return {
+        "champion_target_high": champion_target_high,
+        "champion_target_low": champion_target_low,
+        "champion_90_target_high": champion_90_target_high,
+        "champion_90_target_low": champion_90_target_low,
+        "champion_180_target_high": champion_180_target_high,
+        "champion_180_target_low": champion_180_target_low,
+        "champion_365_target_high": champion_365_target_high,
+        "champion_365_target_low": champion_365_target_low
+    }
 
 if __name__ == "__main__":
     finder(ticker='aapl')
