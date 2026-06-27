@@ -1,6 +1,8 @@
 import json
 from datetime import datetime
 import yfinance as yf
+from pathlib import Path
+
 
 
 def download_data(ticker, start_date, end_date):
@@ -53,8 +55,11 @@ if __name__ == "__main__":
     print(f"Downloading data for {ticker}...")
     data = fetch_data(ticker, start_date, end_date)
 
-    output_file = f"{ticker.lower()}_data.json"
-    with open(output_file, "w", encoding="utf-8") as f:
+    folder_path = Path(f"{ticker}_ticker")
+    folder_path.mkdir(parents=True, exist_ok=True)
+
+    output_file = "data.json"
+    with open(f"{folder_path}/{output_file}", "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
     print(f"Saved {len(data)} records to {output_file}")

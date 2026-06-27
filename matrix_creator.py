@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +453,7 @@ def clean_matrix(data):
     return data
 
 
-def build_feature_matrix(raw_data, file_path="final_matrix.json"):
+def build_feature_matrix(raw_data, ticker):
     """
     Run all feature engineering steps sequentially,
     save the cleaned matrix to `file_path`.json and return the final matrix as a list of dictionaries.
@@ -463,19 +464,21 @@ def build_feature_matrix(raw_data, file_path="final_matrix.json"):
     add_rsi(raw_data)
     add_all_target_variables(raw_data)
     clean_matrix(raw_data)
+    folder_path = Path(f"{ticker}_ticker")
+    folder_path.mkdir(parents=True, exist_ok=True)
 
-    with open(file_path, "w", encoding="utf-8") as f:
+    with open(f"{folder_path}/matrix.json", "w", encoding="utf-8") as f:
         json.dump(raw_data, f, indent=2)
 
     return raw_data
 
 
 if __name__ == "__main__":
-    with open("aapl_data.json", encoding="utf-8") as f:
+    with open("aapl_ticker/data.json", encoding="utf-8") as f:
         raw_data = json.load(f)
 
-    matrix = build_feature_matrix(raw_data, file_path="final_matrix.json")
-    print(f"Feature matrix ready: {len(matrix)} rows saved to final_matrix.json")
+    matrix = build_feature_matrix(raw_data, ticker="aapl")
+    print(f"Feature matrix ready: {len(matrix)} rows saved to aapl_matrix.json")
 
     if matrix:
         print("Sample row:", matrix[0])

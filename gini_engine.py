@@ -2,6 +2,7 @@ import test_creator
 import json
 import operator
 from classes import Type, Rule, Value
+from pathlib import Path
 
 features_to_keep = ["Direction", "SMA_20_Ratio", "SMA_50_Ratio", "SMA_100_Ratio", "SMA_200_Ratio", "Cross_20_50", "Cross_50_100", "Cross_100_200", "MACD_Line", "MACD_Signal", "RSI"]
 
@@ -309,7 +310,7 @@ def evaluate_combination_set(raw_data, combination_features, rule_combinations, 
         }
     return None
 
-def engine():
+def engine(ticker:str):
     """
     Main execution function that discovers optimal trading rules through exhaustive feature combination analysis.
     
@@ -340,9 +341,8 @@ def engine():
     - Value: Object with day, type, combination, win_rate, support, profit, rules
     """
     print("================================ Gini Engine Master =================================")
-    ticker = input("Hisse adini giriniz (orn. aapl): ").strip().lower()
     
-    with open("final_matrix.json", encoding="utf-8") as f:
+    with open(f"{ticker}_ticker/matrix.json", encoding="utf-8") as f:
         raw_data = json.load(f)
         
     X_train, X_test, y_train, y_test = test_creator.create_test_data(raw_data)
@@ -405,10 +405,12 @@ def engine():
                     key_name = f"LOW-{'-'.join(combination)}"
                     final_best_combinations[key_name] = val_low_obj.to_dict()
 
-        output_filename = f"{ticker}_{target_col}.json"
-        with open(output_filename, "w", encoding="utf-8") as f:
+        folder_path = Path(f"{ticker}_ticker")
+        folder_path.mkdir(parents=True, exist_ok=True)
+        output_filename = f"{target_col}.json"
+        with open(f"{folder_path}/{output_filename}", "w", encoding="utf-8") as f:
             json.dump(final_best_combinations, f, indent=4)
         print(f"[{target_col}] Sonuclari {output_filename} icerisine obje formatinda kaydedildi.")
 
 if __name__ == "__main__":
-    engine()
+    engine("aapl")
