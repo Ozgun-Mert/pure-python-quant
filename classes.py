@@ -1,5 +1,6 @@
 import enum
 from typing import List
+from dataclasses import dataclass
 
 
 """
@@ -67,9 +68,27 @@ class Rule:
         self._operation = operation
 
     def __str__(self) -> str:
+        """
+        Return a human-readable string representation of this rule.
+
+        The output includes the feature name and threshold value, suitable for
+        logging or display in user-facing prediction summaries.
+
+        Returns:
+            str: Formatted string like "Rule(Feature: RSI, Threshold: 70.0)".
+        """
         return f"Rule(Feature: {self._feature}, Threshold: {self._threshold})"
 
     def __repr__(self) -> str:
+        """
+        Return a developer-oriented string representation of this rule.
+
+        Used by debuggers and the interactive interpreter to show the rule's
+        core identifying attributes in a compact, unambiguous format.
+
+        Returns:
+            str: Angle-bracket representation with feature and threshold.
+        """
         return f"<Feature: {self._feature}, Threshold: {self._threshold}>"
 
 
@@ -123,7 +142,17 @@ class Rule:
     @classmethod
     def from_dict(cls, data: dict) -> 'Rule':
         """
-        Creates a Rule object from dict.
+        Reconstruct a Rule instance from a JSON-compatible dictionary.
+
+        Expects a dictionary with exactly the keys produced by `to_dict()`:
+        "feature", "threshold", and "operation". This is the inverse of
+        serialization and is used when loading discovered rules from disk.
+
+        Parameters:
+            data: Dictionary containing rule fields as stored in JSON output files.
+
+        Returns:
+            Rule: A fully initialized Rule object with the deserialized values.
         """
         return cls(
             feature=data["feature"],
@@ -174,9 +203,27 @@ class Value:
         self._rules = rules
 
     def __str__(self) -> str:
+        """
+        Return a concise, human-readable summary of this trading signal.
+
+        Formats the signal direction, win rate, average profit, and historical
+        support count as percentages for easy reading in console output.
+
+        Returns:
+            str: One-line summary of the signal's key performance metrics.
+        """
         return f"Signal(Type: {self.type.name}, Win Ratio: %{self.win_rate*100:.1f}, Profit: %{self.percentage_profit*100:.1f}, Support: {self.support})"
 
     def __repr__(self) -> str:
+        """
+        Return a detailed developer-oriented representation of this signal.
+
+        Includes type, win rate, profit, support count, and the full list of
+        constituent Rule objects for debugging and interactive inspection.
+
+        Returns:
+            str: Multi-field angle-bracket representation of the Value object.
+        """
         return f"<Value {self.type.name} | Win: {self.win_rate:.2f} | Profit: {self.percentage_profit:.2f}, Support: {self.support}, Rules: {self.rules} >\n"
 
     @property
@@ -295,8 +342,20 @@ class Value:
     @classmethod
     def from_dict(cls, data: dict) -> 'Value':
         """
-        Creates a Value object from dict.
-        Converts nested Rule object and Type enum automatically.
+        Reconstruct a Value instance from a JSON-compatible dictionary.
+
+        Deserializes all scalar fields directly, converts the "type" string
+        back into a Type enum member, and recursively builds Rule objects from
+        the nested "rules" list. This is the inverse of `to_dict()` and is
+        used when loading Gini Engine output files.
+
+        Parameters:
+            data: Dictionary containing all Value fields as stored in JSON files.
+                  Must include keys: day, type, combination, win_rate, support,
+                  percentage_profit, which_day_is_higher, and rules.
+
+        Returns:
+            Value: A fully initialized Value object with deserialized rules.
         """
         signal_type = Type(data["type"])
         
@@ -312,3 +371,49 @@ class Value:
             which_day_is_higher=data["which_day_is_higher"],
             rules=rules_list
         )
+@dataclass
+class Prediction:
+    """
+    Represents a live trading prediction generated for a specific ticker and date.
+
+    A Prediction is produced when all conditions of a champion trading signal
+    (discovered by the Gini Engine and selected by best_signal_finder) are met
+    on a given day's market data. It bundles the signal direction, estimated
+    probability of success, expected price change, time horizon, and the list
+    of rules that fired.
+
+    Attributes:
+        ticker: Stock symbol (e.g., "aapl") for which the prediction applies.
+        date: ISO date string (YYYY-MM-DD) of the market day being evaluated.
+        signal_type: Direction label — "HIGH" for bullish or "LOW" for bearish.
+        probability: Estimated success probability, capped at 0.8, derived from
+                     the champion signal's historical win rate.
+        expected_change_pct: Expected percentage price change over the signal's
+                             horizon, taken from the champion's average profit.
+        expected_days: Prediction time horizon in days (3, 90, 180, or 365).
+        rules_matched: Human-readable string representations of each Rule that
+                       evaluated to True on the target date.
+    """
+    ticker: str
+    date: str
+    signal_type: str
+    probability: float
+    expected_change_pct: float
+    expected_days: int
+    rules_matched: List[str]
+
+    def __str__(self) -> str:
+        """
+        Return a formatted, user-friendly summary of this prediction.
+
+        Displays the date, ticker, time horizon, signal direction, probability,
+        and expected price move as a single readable line suitable for console
+        output in predictor.py.
+
+        Returns:
+            str: Formatted prediction string with percentage-formatted metrics.
+        """
+        direction = "Bullish (+)" if self.signal_type == "HIGH" else "Bearish (-)"
+        return (f"[{self.date}] {self.ticker.upper()} | {self.expected_days}-Day Outlook | "
+                f"Signal: {direction} | Prob: {self.probability * 100:.1f}% | "
+                f"Expected Move: {self.expected_change_pct * 100:.2f}%")

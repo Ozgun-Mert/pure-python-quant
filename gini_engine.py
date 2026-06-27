@@ -4,7 +4,36 @@ import operator
 from classes import Type, Rule, Value
 from pathlib import Path
 
+"""
+Gini Engine — exhaustive trading rule discovery module.
+
+This module implements the core rule discovery pipeline for the Pure Python Quant
+system. It analyzes historical feature matrix data to find optimal multi-feature
+trading rules that predict bullish (HIGH) or bearish (LOW) price movements across
+four time horizons: 3-day, 90-day, 180-day, and 365-day.
+
+The engine works by:
+    1. Finding optimal single-feature thresholds for each indicator
+    2. Generating all multi-feature combinations (2, 3, ... N features)
+    3. Evaluating every threshold combination to maximize win rate
+    4. Saving the best rules per combination to horizon-specific JSON files
+
+Output files are written to {ticker}_ticker/ as Target.json, Target_90.json,
+Target_180.json, and Target_365.json.
+"""
+
 features_to_keep = ["Direction", "SMA_20_Ratio", "SMA_50_Ratio", "SMA_100_Ratio", "SMA_200_Ratio", "Cross_20_50", "Cross_50_100", "Cross_100_200", "MACD_Line", "MACD_Signal", "RSI"]
+"""
+List of technical indicator feature names used during rule discovery.
+
+These correspond to the core features computed by matrix_creator.py and must
+all be present (non-None) in a row for it to be included in rule evaluation.
+Direction: daily price change sign (-1, 0, 1)
+SMA_X_Ratio: normalized distance of close from X-day simple moving average
+Cross_X_Y: binary flag indicating whether shorter SMA ratio exceeds longer
+MACD_Line/Signal: MACD indicator components
+RSI: 14-day Relative Strength Index
+"""
 
 OPS = {
     "==": operator.eq,
@@ -14,8 +43,11 @@ OPS = {
     ">":  operator.gt
 }
 """
-Mapping of operator symbols to Python operator functions.
-Used to evaluate conditions like 'RSI > 70' or 'SMA_20_Ratio <= 0.1'
+Mapping of comparison operator string symbols to Python operator callables.
+
+Used throughout rule evaluation to apply conditions like 'RSI > 70' or
+'SMA_20_Ratio <= 0.1' against individual data rows. Keys must match the
+operation strings stored in Rule objects.
 """
 
 TARGET_CONFIG = {
@@ -40,13 +72,17 @@ TARGET_CONFIG = {
         "day_col": None
     }
 }
-# Configuration for different target prediction horizons.
-# Each target configuration defines:
-# - days: Time horizon in days for the prediction
-# - pct_col: Column name containing the average percentage change for this horizon
-# - day_col: Column name containing which day the signal triggered (None if not applicable)
-# These configurations map to the target variables created in matrix_creator.py,
-# allowing the engine to analyze multiple prediction timeframes simultaneously.
+"""
+Configuration mapping for each prediction horizon's target variables.
+
+Each key corresponds to a target JSON output filename and defines:
+    - days: Prediction time horizon in calendar days
+    - pct_col: Matrix column holding average percentage price change for this horizon
+    - day_col: Matrix column for which day the short-term target was first met
+               (only applicable for the 3-day Target; None for longer horizons)
+
+These column names are produced by add_all_target_variables() in matrix_creator.py.
+"""
 
 def get_best_single_thresholds(raw_data, features_to_keep, target_col, min_samples=100):
     """
@@ -310,7 +346,7 @@ def evaluate_combination_set(raw_data, combination_features, rule_combinations, 
         }
     return None
 
-def engine(ticker:str):
+def gini_engine(ticker:str):
     """
     Main execution function that discovers optimal trading rules through exhaustive feature combination analysis.
     
@@ -353,7 +389,12 @@ def engine(ticker:str):
 
     for target_col, config in TARGET_CONFIG.items():
         print(f"\n[{target_col}] Test Ediliyor...")
-        best_thresholds = get_best_single_thresholds(train_data, features_to_keep, target_col)
+        valid_train_data = [
+            row for row in train_data 
+            if row.get(target_col) is not None and row.get(config["pct_col"]) is not None
+        ]
+
+        best_thresholds = get_best_single_thresholds(valid_train_data, features_to_keep, target_col)
         final_best_combinations = {}
 
         for i in range(1, len(features_to_keep)):
@@ -364,7 +405,7 @@ def engine(ticker:str):
                 low_values = [best_thresholds.get(feat, {}).get("low", []) for feat in combination]
 
                 value_combinations_high = generate_value_combinations(high_values)
-                best_high = evaluate_combination_set(train_data, combination, value_combinations_high, True, MIN_SUPPORT, target_col, config["pct_col"], config["day_col"])
+                best_high = evaluate_combination_set(valid_train_data, combination, value_combinations_high, True, MIN_SUPPORT, target_col, config["pct_col"], config["day_col"])
                 
                 if best_high:
                     rule_objects_high = []
@@ -385,7 +426,7 @@ def engine(ticker:str):
                     final_best_combinations[key_name] = val_high_obj.to_dict()
 
                 value_combinations_low = generate_value_combinations(low_values)
-                best_low = evaluate_combination_set(train_data, combination, value_combinations_low, False, MIN_SUPPORT, target_col, config["pct_col"], config["day_col"])
+                best_low = evaluate_combination_set(valid_train_data, combination, value_combinations_low, False, MIN_SUPPORT, target_col, config["pct_col"], config["day_col"])
                 
                 if best_low:
                     rule_objects_low = []

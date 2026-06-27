@@ -1,3 +1,21 @@
+"""
+Feature engineering and target variable module for the Pure Python Quant pipeline.
+
+Transforms raw daily close price data (from data_fetcher.py) into a fully
+engineered feature matrix with technical indicators and forward-looking target
+variables for rule discovery by gini_engine.py.
+
+Feature engineering pipeline (applied in order by build_feature_matrix):
+    1. Price direction (daily up/down/same sign)
+    2. Normalized SMA ratios and crossover signals (20/50/100/200-day)
+    3. MACD indicator (EMA-12, EMA-26, signal line)
+    4. RSI (14-day Wilder-smoothed)
+    5. Binary target variables and percentage change targets for 3/90/180/365-day horizons
+    6. Row cleaning (drop rows with missing core indicators, keep recent rows with None targets)
+
+Output is saved to {ticker}_ticker/matrix.json and returned as a list of dicts.
+"""
+
 import json
 from pathlib import Path
 
@@ -7,16 +25,40 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 def _sma(values):
-    """Calculate simple arithmetic mean of given list of numbers."""
+    """
+    Calculate the simple arithmetic mean of a list of numeric values.
+
+    Used as the foundation for SMA ratio calculations and as the initial seed
+    value for EMA series before recursive smoothing begins.
+
+    Parameters:
+        values: Non-empty list of numeric close prices or indicator values.
+
+    Returns:
+        float: Arithmetic mean of all values in the list.
+    """
     return sum(values) / len(values)
 
 
 def _ema_series(values, period):
     """
-    Calculate EMA series.
-    The first EMA value is initialized with the SMA of the first `period` days.
-    Multiplier = 2 / (period + 1)
-    Days that cannot be calculated are None.
+    Compute an Exponential Moving Average (EMA) series for a price list.
+
+    Initialization follows standard practice: the first EMA value at index
+    (period - 1) is set to the SMA of the first `period` values. Subsequent
+    values use the recursive formula:
+        EMA_t = (Price_t - EMA_{t-1}) * multiplier + EMA_{t-1}
+    where multiplier = 2 / (period + 1).
+
+    All indices before the first valid EMA are set to None.
+
+    Parameters:
+        values: List of numeric close prices (length n).
+        period: EMA lookback period (e.g., 12 for MACD fast line, 26 for slow).
+
+    Returns:
+        list: Length-n list of EMA values; None for indices 0 through period-2.
+              Returns all-None list if len(values) < period.
     """
     n = len(values)
     ema_values = [None] * n
@@ -40,8 +82,21 @@ def _ema_series(values, period):
 
 def add_price_direction(data):
     """
-    Add direction information based on the previous day's close.
-    Increase → 1, Decrease → -1, Same → 0. First day → None.
+    Add daily price direction indicator based on close-to-close comparison.
+
+    Compares each day's close to the previous day's close and assigns:
+        1  → close increased (bullish day)
+        -1 → close decreased (bearish day)
+         0 → close unchanged
+        None → first row (no prior day available)
+
+    Modifies rows in-place by adding a "Direction" key.
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+
+    Returns:
+        list: The same data list with "Direction" added to each row.
     """
     for i, row in enumerate(data):
         if i == 0:
@@ -131,10 +186,24 @@ def add_sma_and_crossovers(data):
 
 def add_macd(data):
     """
-    Calculate MACD indicator.
-    - EMA_12 and EMA_26: based on close prices (initialized with SMA)
-    - MACD_Line: EMA_12 - EMA_26
-    - MACD_Signal: 9 day EMA based on MACD_Line (initialized with SMA)
+    Calculate the MACD (Moving Average Convergence Divergence) indicator.
+
+    Computes two EMA series (12-day and 26-day) from close prices, then derives:
+        - EMA_12, EMA_26: Individual exponential moving averages
+        - MACD_Line: EMA_12 minus EMA_26 (momentum measure)
+        - MACD_Signal: 9-day EMA of the MACD_Line (signal/trigger line)
+
+    The signal line is initialized with the SMA of the first 9 valid MACD_Line
+    values (starting at index 25, where EMA_26 first becomes available), then
+    smoothed recursively using the standard EMA multiplier 2/(9+1).
+
+    Modifies rows in-place. Intermediate EMA columns are removed during clean_matrix().
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+
+    Returns:
+        list: The same data list with MACD columns added to each row.
     """
     closes = [row["Close"] for row in data]
     ema_12 = _ema_series(closes, 12)
@@ -171,9 +240,25 @@ def add_macd(data):
 
 def add_rsi(data, period=14):
     """
-    Calculate Relative Strength Index (RSI).
-    - The first `period` days's gains/losses are initialized with simple average
-    - Then Wilder smoothed moving average is used for subsequent days
+    Calculate the Relative Strength Index (RSI) using Wilder's smoothing method.
+
+    For each day after the first, computes daily gain and loss from close-to-close
+    change. The initial average gain/loss at index `period` uses a simple average
+    of the first `period` daily gains and losses. Subsequent days apply Wilder's
+    smoothed moving average:
+        Avg_Gain_t = (Avg_Gain_{t-1} * (period-1) + Gain_t) / period
+
+    RSI formula: 100 - (100 / (1 + RS)), where RS = Avg_Gain / Avg_Loss.
+    When Avg_Loss is zero, RSI is set to 100.0 (maximum strength).
+
+    Intermediate columns (Gain, Loss, Avg_Gain, Avg_Loss) are removed by clean_matrix().
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+        period: RSI lookback period (default: 14, industry standard).
+
+    Returns:
+        list: The same data list with "RSI" added; None for insufficient history.
     """
     n = len(data)
 
@@ -348,8 +433,22 @@ def add_target_365day_percentage_change(data):
 
 def add_target_variable(data, days_ahead=3):
     """
-    Model target variable (y): until `days_ahead` any day's close is higher than today's close,
-    then 1, otherwise 0. Last `days_ahead` day is None.
+    Add a binary short-term target variable indicating future price increase.
+
+    For each row, looks ahead up to `days_ahead` trading days. If ANY future
+    day's close exceeds today's close, the target is 1 (bullish); otherwise 0.
+    Also records "Which_Day_Is_Higher" — the 1-indexed day (1 to days_ahead)
+    on which the price first exceeded today's close.
+
+    Rows within `days_ahead` of the dataset end receive Target=None because
+    future prices are unavailable.
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+        days_ahead: Number of future days to scan (default: 3).
+
+    Returns:
+        list: The same data list with "Target" and "Which_Day_Is_Higher" added.
     """
     n = len(data)
 
@@ -370,8 +469,17 @@ def add_target_variable(data, days_ahead=3):
 
 def add_90_day_target_variable(data):
     """
-    Model target variable (y): 85-95 day's close is higher than today's close,
-    then 1, otherwise 0. Last 95 day is None.
+    Add a binary 90-day target variable based on medium-term price direction.
+
+    Compares today's close to the average close over days 85–94 ahead (a 10-day
+    window centered near the 90-day mark). Target_90 = 1 if the future average
+    exceeds today's close, 0 otherwise. Rows within 95 days of the end are None.
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+
+    Returns:
+        list: The same data list with "Target_90" added to each row.
     """
 
     n = len(data)
@@ -387,8 +495,17 @@ def add_90_day_target_variable(data):
 
 def add_180_day_target_variable(data):
     """
-    Model target variable (y): 170-190 day's close is higher than today's close,
-    then 1, otherwise 0. Last 190 day is None.
+    Add a binary 180-day target variable based on 6-month price direction.
+
+    Compares today's close to the average close over days 170–189 ahead (a 20-day
+    window centered near the 180-day mark). Target_180 = 1 if the future average
+    exceeds today's close, 0 otherwise. Rows within 190 days of the end are None.
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+
+    Returns:
+        list: The same data list with "Target_180" added to each row.
     """
 
     n = len(data)
@@ -404,8 +521,17 @@ def add_180_day_target_variable(data):
 
 def add_365_day_target_variable(data):
     """
-    Model target variable (y): 350-380 day's close is higher than today's close,
-    then 1, otherwise 0. Last 380 day is None.
+    Add a binary 365-day target variable based on annual price direction.
+
+    Compares today's close to the average close over days 350–379 ahead (a 30-day
+    window centered near the 365-day mark). Target_365 = 1 if the future average
+    exceeds today's close, 0 otherwise. Rows within 380 days of the end are None.
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+
+    Returns:
+        list: The same data list with "Target_365" added to each row.
     """
 
     n = len(data)
@@ -421,8 +547,21 @@ def add_365_day_target_variable(data):
 
 def add_all_target_variables(data):
     """
-    Apply all target variable functions to the data including 3-day, 90-day, 180-day, and 365-day targets.
-    Returns the data with all target variables added.
+    Apply all binary target and percentage-change target functions to the data.
+
+    Sequentially adds targets for all four horizons:
+        - Binary: Target (3-day), Target_90, Target_180, Target_365
+        - Percentage change: Target_Day_Percentage_Change, Target_90Day_Percentage_Change,
+          Target_180Day_Percentage_Change, Target_365Day_Percentage_Change
+
+    Binary targets are used by gini_engine for win-rate calculation; percentage
+    change columns are averaged across matching rows to estimate expected profit.
+
+    Parameters:
+        data: List of row dicts with "Close" field, ordered chronologically.
+
+    Returns:
+        list: The same data list with all eight target columns added.
     """
     add_target_variable(data, days_ahead=3)
     add_90_day_target_variable(data)
@@ -439,8 +578,22 @@ def add_all_target_variables(data):
 
 def clean_matrix(data):
     """
-    Remove rows with None and clean intermediate calculation keys.
-    Return only the features required for the model.
+    Remove intermediate calculation columns and drop rows with missing core features.
+
+    Two-phase cleanup:
+        1. Strip intermediate keys (Gain, Loss, Avg_Gain, Avg_Loss, EMA_12, EMA_26)
+           that were needed during RSI/MACD computation but are not used by the engine.
+        2. Remove rows where any of the eleven core indicator features is None.
+
+    Rows with None target values are deliberately KEPT so that recent market days
+    (where future prices are unknown) remain available for live prediction in
+    predictor.py.
+
+    Parameters:
+        data: Feature-engineered list of row dicts (modified in-place).
+
+    Returns:
+        list: Cleaned data with only valid-indicator rows remaining.
     """
     intermediate_keys = ["Gain", "Loss", "Avg_Gain", "Avg_Loss", "EMA_12", "EMA_26"]
 
@@ -448,15 +601,39 @@ def clean_matrix(data):
         for key in intermediate_keys:
             row.pop(key, None)
 
-    data[:] = [row for row in data if all(value is not None for value in row.values())]
+    # These are the features we absolutely need to make a prediction
+    core_features = [
+        "Direction", "SMA_20_Ratio", "SMA_50_Ratio", "SMA_100_Ratio", "SMA_200_Ratio", 
+        "Cross_20_50", "Cross_50_100", "Cross_100_200", "MACD_Line", "MACD_Signal", "RSI"
+    ]
+
+    # Only drop the row if a CORE feature is None (keeps recent days where Target is None)
+    data[:] = [
+        row for row in data 
+        if all(row.get(feat) is not None for feat in core_features)
+    ]
 
     return data
 
 
 def build_feature_matrix(raw_data, ticker):
     """
-    Run all feature engineering steps sequentially,
-    save the cleaned matrix to `file_path`.json and return the final matrix as a list of dictionaries.
+    Run the complete feature engineering pipeline and persist the result to disk.
+
+    Orchestrates all feature and target computation steps in sequence:
+        add_price_direction → add_sma_and_crossovers → add_macd → add_rsi
+        → add_all_target_variables → clean_matrix
+
+    Saves the final matrix to {ticker}_ticker/matrix.json with 2-space indentation.
+
+    Parameters:
+        raw_data: List of row dicts with at minimum "Date" and "Close" fields,
+                  typically loaded from {ticker}_ticker/data.json.
+        ticker: Stock symbol used to determine the output folder path.
+
+    Returns:
+        list: The cleaned feature matrix as a list of row dictionaries, also
+              written to {ticker}_ticker/matrix.json.
     """
     add_price_direction(raw_data)
     add_sma_and_crossovers(raw_data)
