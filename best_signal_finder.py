@@ -273,6 +273,20 @@ def best_for_365_target(target_365_list):
         "low": best_lows
     }
 
+def gini_output_to_values(gini_output: dict) -> List[Value]:
+    """
+    Convert in-memory Gini Engine output to a list of Value objects.
+
+    Parameters:
+        gini_output: Dict mapping rule identifiers to serialized Value dicts,
+                     as returned by gini_engine() for one target horizon.
+
+    Returns:
+        List[Value]: All discovered signals as Value instances.
+    """
+    return [Value.from_dict(val_dict) for val_dict in gini_output.values()]
+
+
 def load_json_to_values(file_path: str) -> List[Value]:
     """
     Load a Gini Engine output JSON file and deserialize all rules into Value objects.
@@ -313,29 +327,33 @@ def read_all_data(ticker: str):
 
     return target_list, target_90_list, target_180_list, target_365_list
 
-def finder(ticker: str):
+def finder(
+    target_list: List[Value],
+    target_90_list: List[Value],
+    target_180_list: List[Value],
+    target_365_list: List[Value],
+):
     """
     Discover the champion bullish and bearish signals across all prediction horizons.
 
-    Orchestrates the full selection pipeline:
-        1. Load all four target JSON files for the ticker
-        2. Apply horizon-specific filtering via best_for_* functions
-        3. Select a single champion from each filtered list via find_champion()
+    Applies horizon-specific filtering via best_for_* functions, then selects a
+    single champion from each filtered list via find_champion().
 
     Returns eight champion Value objects — one HIGH and one LOW for each of the
     four horizons (3-day, 90-day, 180-day, 365-day). Any horizon with no
     qualifying signals yields None for that champion slot.
 
     Parameters:
-        ticker: Stock symbol to analyze (e.g., "aapl").
+        target_list: Value objects for the 3-day horizon.
+        target_90_list: Value objects for the 90-day horizon.
+        target_180_list: Value objects for the 180-day horizon.
+        target_365_list: Value objects for the 365-day horizon.
 
     Returns:
         dict: Eight keys mapping to champion Value objects (or None):
               champion_target_high/low, champion_90_target_high/low,
               champion_180_target_high/low, champion_365_target_high/low.
     """
-    target_list, target_90_list, target_180_list, target_365_list = read_all_data(ticker)
-
     best_target = best_for_target(target_list=target_list)
     best_90_target = best_for_90_target(target_90_list=target_90_list)
     best_180_target = best_for_180_target(target_180_list=target_180_list)
@@ -350,15 +368,6 @@ def finder(ticker: str):
     champion_365_target_high = find_champion(signals=best_365_target["high"], signal_type=Type.HIGH)
     champion_365_target_low = find_champion(signals=best_365_target["low"], signal_type=Type.LOW)
 
-    #print(champion_target_high)
-    #print(champion_target_low)
-    #print(champion_90_target_high)
-    #print(champion_90_target_low)
-    #print(champion_180_target_high)
-    #print(champion_180_target_low)
-    #print(champion_365_target_high)
-    #print(champion_365_target_low)
-
     return {
         "champion_target_high": champion_target_high,
         "champion_target_low": champion_target_low,
@@ -370,8 +379,24 @@ def finder(ticker: str):
         "champion_365_target_low": champion_365_target_low
     }
 
-if __name__ == "__main__":
-    finder(ticker='aapl')
 
-        
-    
+def finder_from_ticker(ticker: str):
+    """
+    Load rule files from disk and discover champion signals for a ticker.
+
+    Standalone wrapper that reads Target*.json files before calling finder().
+    Used only when running best_signal_finder.py directly or from predictor.py __main__.
+
+    Parameters:
+        ticker: Stock symbol to analyze (e.g., "aapl").
+
+    Returns:
+        dict: Eight champion Value objects (or None) — same as finder().
+    """
+    target_list, target_90_list, target_180_list, target_365_list = read_all_data(ticker)
+    return finder(target_list, target_90_list, target_180_list, target_365_list)
+
+if __name__ == "__main__":
+    champions = finder_from_ticker(ticker='aapl')
+    for key, champion in champions.items():
+        print(f"{key}: {champion}")

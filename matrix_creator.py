@@ -616,24 +616,19 @@ def clean_matrix(data):
     return data
 
 
-def build_feature_matrix(raw_data, ticker):
+def build_feature_matrix(raw_data):
     """
-    Run the complete feature engineering pipeline and persist the result to disk.
+    Run the complete feature engineering pipeline on in-memory price data.
 
     Orchestrates all feature and target computation steps in sequence:
         add_price_direction → add_sma_and_crossovers → add_macd → add_rsi
         → add_all_target_variables → clean_matrix
 
-    Saves the final matrix to {ticker}_ticker/matrix.json with 2-space indentation.
-
     Parameters:
-        raw_data: List of row dicts with at minimum "Date" and "Close" fields,
-                  typically loaded from {ticker}_ticker/data.json.
-        ticker: Stock symbol used to determine the output folder path.
+        raw_data: List of row dicts with at minimum "Date" and "Close" fields.
 
     Returns:
-        list: The cleaned feature matrix as a list of row dictionaries, also
-              written to {ticker}_ticker/matrix.json.
+        list: The cleaned feature matrix as a list of row dictionaries.
     """
     add_price_direction(raw_data)
     add_sma_and_crossovers(raw_data)
@@ -641,21 +636,23 @@ def build_feature_matrix(raw_data, ticker):
     add_rsi(raw_data)
     add_all_target_variables(raw_data)
     clean_matrix(raw_data)
-    folder_path = Path(f"{ticker}_ticker")
-    folder_path.mkdir(parents=True, exist_ok=True)
-
-    with open(f"{folder_path}/matrix.json", "w", encoding="utf-8") as f:
-        json.dump(raw_data, f, indent=2)
 
     return raw_data
 
 
 if __name__ == "__main__":
-    with open("aapl_ticker/data.json", encoding="utf-8") as f:
+    ticker = "aapl"
+    with open(f"{ticker}_ticker/data.json", encoding="utf-8") as f:
         raw_data = json.load(f)
 
-    matrix = build_feature_matrix(raw_data, ticker="aapl")
-    print(f"Feature matrix ready: {len(matrix)} rows saved to aapl_matrix.json")
+    matrix = build_feature_matrix(raw_data)
+
+    folder_path = Path(f"{ticker}_ticker")
+    folder_path.mkdir(parents=True, exist_ok=True)
+    with open(f"{folder_path}/matrix.json", "w", encoding="utf-8") as f:
+        json.dump(matrix, f, indent=2)
+
+    print(f"Feature matrix ready: {len(matrix)} rows saved to {ticker}_ticker/matrix.json")
 
     if matrix:
         print("Sample row:", matrix[0])

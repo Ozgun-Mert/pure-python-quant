@@ -7,10 +7,9 @@ in a champion signal are satisfied, a Prediction object is generated with
 the signal direction, probability, expected price change, and time horizon.
 
 Workflow:
-    1. Load the feature matrix row for the target ticker and date
-    2. Retrieve all eight champion signals via best_signal_finder.finder()
-    3. Evaluate each champion's Rule conditions against the market row
-    4. Return Prediction objects for every champion whose rules all match
+    1. Look up the feature matrix row for the target date
+    2. Evaluate each champion's Rule conditions against the market row
+    3. Return Prediction objects for every champion whose rules all match
 
 The probability assigned to each prediction is capped at 0.8 to avoid over-
 confidence from historically high win rates.
@@ -19,10 +18,9 @@ confidence from historically high win rates.
 import json
 import operator
 from typing import List, Optional
-from dataclasses import dataclass
 
-from classes import Value, Type, Rule, Prediction
-from best_signal_finder import finder
+from classes import Rule, Prediction
+from best_signal_finder import finder_from_ticker
 
 OPS = {
     "==": operator.eq,
@@ -48,7 +46,7 @@ def evaluate_rule(rule: Rule, row_data: dict) -> bool:
 
     Parameters:
         rule: Rule object containing feature name, threshold, and operation.
-        row_data: Single day's feature matrix row as a dictionary (from matrix.json).
+        row_data: Single day's feature matrix row as a dictionary.
 
     Returns:
         bool: True if the condition evaluates to True, False otherwise.
@@ -67,36 +65,33 @@ def evaluate_rule(rule: Rule, row_data: dict) -> bool:
         
     return op_func(feature_val, rule.threshold)
 
-def get_market_data_for_date(ticker: str, target_date: str) -> Optional[dict]:
+def get_market_data_for_date(matrix: list, target_date: str) -> Optional[dict]:
     """
-    Retrieve a single day's feature matrix row for a ticker and date.
+    Retrieve a single day's feature matrix row for a given date.
 
-    Loads the full matrix.json file for the ticker and scans for a row whose
-    "Date" field matches the target_date string exactly.
+    Scans the in-memory matrix for a row whose "Date" field matches the
+    target_date string exactly.
 
     Parameters:
-        ticker: Stock symbol (e.g., "aapl") whose matrix file to read.
+        matrix: In-memory feature matrix from build_feature_matrix().
         target_date: ISO date string (YYYY-MM-DD) to look up.
 
     Returns:
         dict: The matching row dictionary with all feature and target columns,
-              or None if the file is missing or no row matches the date.
+              or None if no row matches the date.
     """
-    file_path = f"{ticker}_ticker/matrix.json"
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Market matrix data for {ticker.upper()} not found. Please run matrix_creator.py first.")
-        return None
-
-    for row in data:
+    for row in matrix:
         if row.get("Date") == target_date:
             return row
             
     return None
 
-def generate_predictions(ticker: str, target_date: str) -> List[Prediction]:
+def generate_predictions(
+    ticker: str,
+    target_date: str,
+    matrix: list,
+    champions_dict: dict,
+) -> List[Prediction]:
     """
     Generate live trading predictions for a ticker on a specific date.
 
@@ -113,21 +108,17 @@ def generate_predictions(ticker: str, target_date: str) -> List[Prediction]:
     Parameters:
         ticker: Stock symbol to predict for (e.g., "aapl").
         target_date: ISO date string (YYYY-MM-DD) of the market day to evaluate.
+        matrix: In-memory feature matrix from build_feature_matrix().
+        champions_dict: Eight champion Value objects from finder().
 
     Returns:
         List[Prediction]: Zero or more Prediction objects for champion signals
                           whose rules all fired on the target date. Empty list
                           if market data is unavailable or no rules match.
     """
-    row_data = get_market_data_for_date(ticker, target_date)
+    row_data = get_market_data_for_date(matrix, target_date)
     if not row_data:
         print(f"Warning: No market data found for {ticker.upper()} on {target_date}.")
-        return []
-
-    try:
-        champions_dict = finder(ticker)
-    except Exception as e:
-        print(f"Error retrieving champion rules: {e}")
         return []
 
     predictions = []
@@ -159,11 +150,15 @@ def generate_predictions(ticker: str, target_date: str) -> List[Prediction]:
 
 if __name__ == "__main__":
     test_ticker = "aapl"
-    
-    test_date = "2026-06-03"  
-    
+    test_date = "2026-06-03"
+
+    with open(f"{test_ticker}_ticker/matrix.json", "r", encoding="utf-8") as f:
+        matrix = json.load(f)
+
+    champions = finder_from_ticker(test_ticker)
+
     print(f"Scanning market conditions for {test_ticker.upper()} on {test_date}...")
-    results = generate_predictions(test_ticker, test_date)
+    results = generate_predictions(test_ticker, test_date, matrix, champions)
     
     print("-" * 70)
     if not results:
