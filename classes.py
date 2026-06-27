@@ -66,6 +66,13 @@ class Rule:
         self._threshold = threshold
         self._operation = operation
 
+    def __str__(self) -> str:
+        return f"Rule(Feature: {self._feature}, Threshold: {self._threshold})"
+
+    def __repr__(self) -> str:
+        return f"<Feature: {self._feature}, Threshold: {self._threshold}>"
+
+
     @property
     def feature(self) -> str:
         """Get the feature/indicator name for this rule."""
@@ -112,6 +119,17 @@ class Rule:
             "threshold": self.threshold,
             "operation": self.operation
         }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Rule':
+        """
+        Creates a Rule object from dict.
+        """
+        return cls(
+            feature=data["feature"],
+            threshold=data["threshold"],
+            operation=data["operation"]
+        )
 
 class Value:
     """
@@ -154,6 +172,12 @@ class Value:
         self._percentage_profit = percentage_profit
         self._which_day_is_higher = which_day_is_higher
         self._rules = rules
+
+    def __str__(self) -> str:
+        return f"Signal(Type: {self.type.name}, Win Ratio: %{self.win_rate*100:.1f}, Profit: %{self.percentage_profit*100:.1f}, Support: {self.support})"
+
+    def __repr__(self) -> str:
+        return f"<Value {self.type.name} | Win: {self.win_rate:.2f} | Profit: {self.percentage_profit:.2f}, Support: {self.support}, Rules: {self.rules} >\n"
 
     @property
     def day(self) -> int:
@@ -267,3 +291,24 @@ class Value:
             "which_day_is_higher": self.which_day_is_higher,
             "rules": [rule.to_dict() for rule in self.rules]
         }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Value':
+        """
+        Creates a Value object from dict.
+        Converts nested Rule object and Type enum automatically.
+        """
+        signal_type = Type(data["type"])
+        
+        rules_list = [Rule.from_dict(rule_data) for rule_data in data["rules"]]
+        
+        return cls(
+            day=data["day"],
+            type=signal_type,
+            combination=data["combination"],
+            win_rate=data["win_rate"],
+            support=data["support"],
+            percentage_profit=data["percentage_profit"],
+            which_day_is_higher=data["which_day_is_higher"],
+            rules=rules_list
+        )
