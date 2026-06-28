@@ -1,10 +1,9 @@
 """
 Champion signal selection module for the Pure Python Quant pipeline.
 
-After the Gini Engine discovers thousands of multi-feature trading rules and
-saves them to JSON files (Target.json, Target_90.json, etc.), this module
-filters, ranks, and selects the single best ("champion") bullish and bearish
-signal for each prediction horizon.
+After the Gini Engine discovers thousands of multi-feature trading rules,
+this module filters, ranks, and selects the single best ("champion") bullish
+and bearish signal for each prediction horizon.
 
 Selection criteria vary by horizon:
     - 3-day (Target): High win rate (95%+), moderate profit thresholds
@@ -12,7 +11,7 @@ Selection criteria vary by horizon:
     - 180-day: Relaxed win rate (80%) with higher support requirements
     - 365-day: Long-term profit and support thresholds
 
-The finder() function is the main orchestrator: it loads all four target files,
+The finder() function is the main orchestrator: it accepts in-memory rule lists,
 applies horizon-specific filters, and returns eight champion Value objects
 (one HIGH and one LOW per horizon).
 """

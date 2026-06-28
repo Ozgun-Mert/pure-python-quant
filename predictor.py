@@ -167,5 +167,5 @@ if __name__ == "__main__":
         print(f"Found {len(results)} active trading signals:")
         for p in results:
             print(p)
-            print(f"   L_ Conditions met: {', '.join(p.rules_matched)}")
+            print(f"Conditions met: {', '.join(p.rules_matched)}")
     print("-" * 70)

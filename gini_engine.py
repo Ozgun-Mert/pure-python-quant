@@ -14,10 +14,10 @@ The engine works by:
     1. Finding optimal single-feature thresholds for each indicator
     2. Generating all multi-feature combinations (2, 3, ... N features)
     3. Evaluating every threshold combination to maximize win rate
-    4. Saving the best rules per combination to horizon-specific JSON files
+    4. Returning the best rules per combination as an in-memory dict
 
-Output files are written to {ticker}_ticker/ as Target.json, Target_90.json,
-Target_180.json, and Target_365.json.
+When run as __main__, results are also written to {ticker}_ticker/ as
+Target.json, Target_90.json, Target_180.json, and Target_365.json.
 """
 
 features_to_keep = ["Direction", "SMA_20_Ratio", "SMA_50_Ratio", "SMA_100_Ratio", "SMA_200_Ratio", "Cross_20_50", "Cross_50_100", "Cross_100_200", "MACD_Line", "MACD_Signal", "RSI"]
@@ -372,7 +372,7 @@ def gini_engine(matrix: list) -> dict:
     all_results = {}
 
     for target_col, config in TARGET_CONFIG.items():
-        print(f"\n[{target_col}] Test Ediliyor...")
+        print(f"\n[{target_col}] Testing...")
         valid_train_data = [
             row for row in train_data
             if row.get(target_col) is not None and row.get(config["pct_col"]) is not None
@@ -448,4 +448,4 @@ if __name__ == "__main__":
         output_filename = f"{target_col}.json"
         with open(f"{folder_path}/{output_filename}", "w", encoding="utf-8") as f:
             json.dump(rules, f, indent=4)
-        print(f"[{target_col}] Sonuclari {output_filename} icerisine obje formatinda kaydedildi.")
+        print(f"[{target_col}] Results saved to {output_filename}.")
