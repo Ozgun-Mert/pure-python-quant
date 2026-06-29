@@ -138,7 +138,7 @@ def generate_predictions(
                 ticker=ticker,
                 date=target_date,
                 signal_type=champion_value.type.name,
-                probability=min(champion_value.win_rate, 0.8),
+                probability=min(champion_value.win_rate*0.8),
                 expected_change_pct=champion_value.percentage_profit,
                 expected_days=champion_value.day,
                 rules_matched=[str(r) for r in champion_value.rules]
